@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(timeout /t 5)",
+      "Bash(timeout /t 3)",
+      "Bash(curl:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm install:*)",
+      "Bash(git restore:*)",
+      "Bash(node -c:*)",
+      "Bash(findstr:*)",
+      "Bash(dir \"C:\\\\Users\\\\Cash\\\\Documents\\\\projects\\\\MaisonEnergivoreReactjs\\\\src\\\\data\")"
+    ]
+  }
+}
