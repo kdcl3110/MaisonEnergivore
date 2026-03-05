@@ -11,8 +11,10 @@ export const SCENARIOS = {
       consumption: null, // Pas de limite
       budget: null,
       comfort: null,
-      offPeakPercentage: null
+      offPeakPercentage: null,
+      greenEnergyPercentage: null
     },
+    solar: { enabled: false },
     events: [
       {
         time: 8,
@@ -51,19 +53,21 @@ export const SCENARIOS = {
     id: 2,
     name: "Jour 2 - Premier Défi",
     title: "Le Premier Défi",
-    description: "Maintenant que vous savez gérer les appareils, essayons de limiter la consommation !",
+    description: "Maintenant que vous savez gérer les appareils, essayons de limiter la consommation ! Vous avez aussi des missions à accomplir.",
     objectives: {
-      consumption: 8,  // kWh
-      budget: 1.20,    // €
+      consumption: 10,  // kWh (augmenté pour les missions)
+      budget: 1.50,     // € (augmenté)
       comfort: null,
-      offPeakPercentage: null
+      offPeakPercentage: null,
+      greenEnergyPercentage: null
     },
+    solar: { enabled: false },
     events: [
       {
         time: 8,
         type: 'info',
         message: "Vous commencez la journée avec 0 kWh",
-        tip: "Objectifs : < 8 kWh et < €1,20"
+        tip: "Objectifs : < 10 kWh et < 1,50€. N'oubliez pas vos missions !"
       },
       {
         time: 12,
@@ -121,13 +125,15 @@ export const SCENARIOS = {
     id: 3,
     name: "Jour 3 - Le Confort d'Abord",
     title: "Le Confort d'Abord",
-    description: "Triple défi ! Il faut économiser MAIS aussi rester confortable. C'est l'hiver, il fait froid...",
+    description: "Triple défi ! Il faut économiser MAIS aussi rester confortable. C'est l'hiver, il fait froid... Les panneaux solaires sont installés !",
     objectives: {
-      consumption: 9,  // kWh (hiver)
-      budget: 1.35,    // €
-      comfort: 75,     // %
-      offPeakPercentage: null
+      consumption: 12,  // kWh (augmenté pour missions + solaire)
+      budget: 1.80,     // €
+      comfort: 70,      // %
+      offPeakPercentage: null,
+      greenEnergyPercentage: null
     },
+    solar: { enabled: true, weather: 'cloudy', peakProductionW: 2500 },
     weatherCondition: 'cold',
     comfortDecayRate: 5, // % par heure sans chauffage
     events: [
@@ -136,6 +142,12 @@ export const SCENARIOS = {
         type: 'weather',
         message: "Il fait très froid ce matin : 2°C extérieur 🥶",
         tip: "Sans chauffage, le confort baisse de -5% par heure"
+      },
+      {
+        time: 9,
+        type: 'info',
+        message: "Vos panneaux solaires commencent à produire !",
+        tip: "Le solaire réduit votre consommation réseau et votre facture"
       },
       {
         time: 12,
@@ -205,19 +217,21 @@ export const SCENARIOS = {
     id: 4,
     name: "Jour 4 - Les Heures Creuses",
     title: "Les Heures Creuses",
-    description: "Mission spéciale : optimiser l'utilisation des heures creuses pour économiser de l'argent !",
+    description: "Mission spéciale : optimiser les heures creuses ET profiter du solaire pour économiser !",
     objectives: {
       consumption: 10, // kWh
-      budget: 1.10,    // €
+      budget: 1.30,    // €
       comfort: null,
-      offPeakPercentage: 50 // % de la consommation
+      offPeakPercentage: 40, // %
+      greenEnergyPercentage: 20 // %
     },
+    solar: { enabled: true, weather: 'sunny', peakProductionW: 3000 },
     events: [
       {
         time: 8,
         type: 'info',
-        message: "Concentrez-vous sur les HEURES CREUSES (22h-6h)",
-        tip: "Objectif : 50% de votre consommation doit être dans ces heures"
+        message: "Grand soleil aujourd'hui ! Vos panneaux solaires vont produire au maximum",
+        tip: "Lancez les gros appareils pendant les pics solaires (11h-15h)"
       },
       {
         time: 14,
@@ -275,8 +289,16 @@ export const SCENARIOS = {
     id: 5,
     name: "Jour 5 - L'Événement Imprévu",
     title: "L'Événement Imprévu",
-    description: "La vie réserve des surprises ! Comment allez-vous gérer un imprévu ?",
-    randomEvent: true, // L'événement sera choisi aléatoirement
+    description: "La vie réserve des surprises ! Comment allez-vous gérer un imprévu ? Le solaire aide, mais le temps est couvert...",
+    randomEvent: true,
+    objectives: {
+      consumption: 12, // kWh
+      budget: 1.60,    // €
+      comfort: 70,     // %
+      offPeakPercentage: null,
+      greenEnergyPercentage: 15 // %
+    },
+    solar: { enabled: true, weather: 'cloudy', peakProductionW: 3000 },
     events: [
       {
         time: 8,
@@ -291,19 +313,21 @@ export const SCENARIOS = {
     id: 6,
     name: "Jour 6 - Le Défi Final",
     title: "Le Défi Final - Préparation",
-    description: "Demain, c'est le jour J ! Aujourd'hui, préparez-vous en optimisant au maximum.",
+    description: "Demain, c'est le jour J ! Aujourd'hui, préparez-vous en optimisant au maximum. Grand soleil pour le solaire !",
     objectives: {
-      consumption: 7,  // kWh (très difficile)
-      budget: 1.00,    // €
-      comfort: 80,     // %
-      offPeakPercentage: 60 // %
+      consumption: 10,  // kWh (ajusté pour missions)
+      budget: 1.30,     // €
+      comfort: 75,      // %
+      offPeakPercentage: 50, // %
+      greenEnergyPercentage: 30 // %
     },
+    solar: { enabled: true, weather: 'sunny', peakProductionW: 3000 },
     events: [
       {
         time: 8,
         type: 'challenge',
         message: "ENTRAÎNEMENT LIBRE - MODE EXPERT",
-        tip: "Battez votre meilleur score tout en respectant 4 objectifs simultanés !"
+        tip: "Battez votre meilleur score tout en respectant tous les objectifs !"
       }
     ],
     bonus: {
@@ -326,14 +350,16 @@ export const SCENARIOS = {
     id: 7,
     name: "Jour 7 - LE GRAND TEST FINAL",
     title: "LE GRAND TEST FINAL",
-    description: "C'est le moment de vérité ! Prouvez que vous avez tout compris en gérant une journée parfaite.",
+    description: "C'est le moment de vérité ! Prouvez que vous avez tout compris en gérant une journée parfaite avec le solaire.",
     objectives: {
-      consumption: 8,  // kWh
-      budget: 1.15,    // €
-      comfort: 75,     // %
-      offPeakPercentage: 50, // %
+      consumption: 10,  // kWh (ajusté pour missions)
+      budget: 1.40,     // €
+      comfort: 70,      // %
+      offPeakPercentage: 40, // %
+      greenEnergyPercentage: 25, // %
       zeroWaste: true  // Aucun appareil inutile ON
     },
+    solar: { enabled: true, weather: 'sunny', peakProductionW: 3000 },
     events: [
       {
         time: 7,

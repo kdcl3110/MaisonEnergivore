@@ -10,7 +10,9 @@
       "Bash(git restore:*)",
       "Bash(node -c:*)",
       "Bash(findstr:*)",
-      "Bash(dir \"C:\\\\Users\\\\Cash\\\\Documents\\\\projects\\\\MaisonEnergivoreReactjs\\\\src\\\\data\")"
+      "Bash(dir \"C:\\\\Users\\\\Cash\\\\Documents\\\\projects\\\\MaisonEnergivoreReactjs\\\\src\\\\data\")",
+      "Bash(dir:*)",
+      "Bash(npx vite build:*)"
     ]
   }
 }

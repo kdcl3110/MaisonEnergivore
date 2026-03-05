@@ -70,7 +70,7 @@ const LevelSelect = () => {
             const scenario = SCENARIOS[`day${day}`];
             const isUnlocked = unlockedDays.includes(day);
             const stars = getDayStars(day);
-            const isCompleted = daysHistory.some(d => d.day === day);
+            const isCompleted = daysHistory.some(d => d.day === day) || stars > 0;
 
             return (
               <button

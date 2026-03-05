@@ -201,3 +201,12 @@ export const ELECTRICITY_RATES = {
 
 // Heures creuses : 22h-6h
 export const isOffPeakHour = (hour) => hour >= 22 || hour < 6;
+
+// Production solaire selon l'heure et la météo
+export const getSolarProductionW = (hour, weather, peakProductionW = 3000) => {
+  if (hour < 8 || hour >= 18) return 0;
+  const normalized = (hour - 13) / 5;
+  const curve = Math.max(0, 1 - normalized * normalized);
+  const weatherMultipliers = { sunny: 1.0, cloudy: 0.5, overcast: 0.3, rainy: 0.2 };
+  return Math.round(peakProductionW * (weatherMultipliers[weather] || 0) * curve);
+};

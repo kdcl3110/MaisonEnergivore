@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { APPLIANCES, ELECTRICITY_RATES, isOffPeakHour } from '../data/appliances';
+import { APPLIANCES, ELECTRICITY_RATES, isOffPeakHour, getSolarProductionW } from '../data/appliances';
 import { SCENARIOS, BELGIUM_AVERAGE } from '../data/scenarios';
+import { MISSIONS } from '../data/missions';
 
 const GameContext = createContext();
 
@@ -36,6 +37,14 @@ export const GameProvider = ({ children }) => {
   const [peakConsumption, setPeakConsumption] = useState(0); // kWh heures pleines
   const [offPeakConsumption, setOffPeakConsumption] = useState(0); // kWh heures creuses
 
+  // Missions
+  const [missionProgress, setMissionProgress] = useState({});
+
+  // Solaire
+  const [solarProductionTotal, setSolarProductionTotal] = useState(0); // kWh produits
+  const [solarConsumptionTotal, setSolarConsumptionTotal] = useState(0); // kWh autoconsommés
+  const [currentSolarProductionW, setCurrentSolarProductionW] = useState(0); // W actuels
+
   // Pénalités actives
   const [activePenalties, setActivePenalties] = useState([]);
 
@@ -53,13 +62,13 @@ export const GameProvider = ({ children }) => {
   // Progression et déblocage des niveaux
   const [unlockedDays, setUnlockedDays] = useState(() => {
     const saved = localStorage.getItem('maisonEnergivore_unlockedDays');
-    return saved ? JSON.parse(saved) : [1]; // Par défaut, seul le tutoriel (jour 1) est débloqué
+    return saved ? JSON.parse(saved) : [1];
   });
 
   // Meilleurs scores (étoiles) pour chaque jour
   const [bestScores, setBestScores] = useState(() => {
     const saved = localStorage.getItem('maisonEnergivore_bestScores');
-    return saved ? JSON.parse(saved) : {}; // Format: { day1: 3, day2: 2, ... }
+    return saved ? JSON.parse(saved) : {};
   });
 
   // Résultats du jour pour le modal de récap
@@ -77,6 +86,11 @@ export const GameProvider = ({ children }) => {
 
   // Scénario du jour actuel
   const currentScenario = SCENARIOS[`day${currentDay}`];
+
+  // Missions du jour
+  const currentMissions = MISSIONS[`day${currentDay}`] || [];
+  const allMissionsCompleted = currentMissions.length === 0 ||
+    currentMissions.every(m => missionProgress[m.id]?.completed);
 
   // Toggle appareil
   const toggleAppliance = useCallback((applianceId) => {
@@ -164,28 +178,72 @@ export const GameProvider = ({ children }) => {
         return 24;
       }
 
-      // Calculer la consommation pour cette heure
+      // Calculer la consommation brute pour cette heure
       const currentPowerW = getCurrentPowerConsumption();
-      const consumptionThisHour = currentPowerW / 1000; // Convertir W en kWh
+      const grossConsumptionThisHour = currentPowerW / 1000; // W -> kWh
 
-      // Ajouter à la consommation totale
-      setTodayConsumption(prev => prev + consumptionThisHour);
+      // Calculer la production solaire
+      const solar = currentScenario?.solar;
+      let solarProductionW = 0;
+      if (solar?.enabled) {
+        solarProductionW = getSolarProductionW(newTime, solar.weather, solar.peakProductionW);
+      }
+      setCurrentSolarProductionW(solarProductionW);
 
-      // Calculer le coût
+      const solarProductionKwh = solarProductionW / 1000;
+      // L'offset solaire ne peut pas dépasser la consommation brute
+      const solarOffsetKwh = Math.min(solarProductionKwh, grossConsumptionThisHour);
+      // Consommation nette = ce qui est tiré du réseau
+      const netConsumptionThisHour = grossConsumptionThisHour - solarOffsetKwh;
+
+      // Tracker la production et autoconsommation solaire
+      if (solar?.enabled) {
+        setSolarProductionTotal(prev => prev + solarProductionKwh);
+        setSolarConsumptionTotal(prev => prev + solarOffsetKwh);
+      }
+
+      // Ajouter la consommation NETTE au total (c'est ce qui est facturé)
+      setTodayConsumption(prev => prev + netConsumptionThisHour);
+
+      // Calculer le coût (seule la consommation réseau est payante)
       const isOffPeak = isOffPeakHour(newTime);
       const rate = isOffPeak ? ELECTRICITY_RATES.offPeakHours : ELECTRICITY_RATES.peakHours;
 
       // Appliquer modificateur de prix des pénalités
       const priceModifier = getPriceModifier();
-      const cost = consumptionThisHour * rate * priceModifier;
+      const cost = netConsumptionThisHour * rate * priceModifier;
 
       setTodayBudget(prev => prev + cost);
 
-      // Séparer heures pleines/creuses
+      // Séparer heures pleines/creuses (consommation nette)
       if (isOffPeak) {
-        setOffPeakConsumption(prev => prev + consumptionThisHour);
+        setOffPeakConsumption(prev => prev + netConsumptionThisHour);
       } else {
-        setPeakConsumption(prev => prev + consumptionThisHour);
+        setPeakConsumption(prev => prev + netConsumptionThisHour);
+      }
+
+      // Tracker les missions
+      const dayMissions = MISSIONS[`day${currentDay}`] || [];
+      if (dayMissions.length > 0) {
+        setMissionProgress(prev => {
+          const updated = { ...prev };
+          dayMissions.forEach(mission => {
+            if (updated[mission.id]?.completed) return; // Déjà complétée
+
+            // Vérifier si un des appareils requis est allumé
+            const applianceOn = mission.appliances.some(aId => appliancesState[aId]);
+            if (!applianceOn) return;
+
+            // Incrémenter la progression
+            const current = updated[mission.id] || { hoursCompleted: 0, completed: false };
+            const newHours = current.hoursCompleted + 1;
+            updated[mission.id] = {
+              hoursCompleted: newHours,
+              completed: newHours >= mission.requiredHours
+            };
+          });
+          return updated;
+        });
       }
 
       // Calculer le confort dynamique
@@ -199,15 +257,12 @@ export const GameProvider = ({ children }) => {
         const heatingOn = appliancesState.heating || appliancesState.heatingLow;
         if (currentScenario?.weatherCondition === 'cold') {
           if (heatingOn) {
-            // Chauffage augmente le confort en hiver
-            newComfort += appliancesState.heating ? 3 : 1.5; // Mode normal ou éco
+            newComfort += appliancesState.heating ? 3 : 1.5;
           } else {
-            // Sans chauffage en hiver, le confort baisse plus vite
             const decayRate = currentScenario.comfortDecayRate || 5;
             newComfort -= decayRate;
           }
         } else if (heatingOn && newTime >= 6 && newTime <= 20) {
-          // Chauffage allumé quand il ne fait pas froid = inconfort
           newComfort -= 2;
         }
 
@@ -215,14 +270,11 @@ export const GameProvider = ({ children }) => {
         const acOn = appliancesState.airConditioning;
         if (currentScenario?.weatherCondition === 'hot') {
           if (acOn) {
-            // Clim augmente le confort en été
             newComfort += 3;
           } else {
-            // Sans clim en canicule, le confort baisse
             newComfort -= 4;
           }
         } else if (acOn) {
-          // Clim allumée quand il ne fait pas chaud = inconfort
           newComfort -= 1;
         }
 
@@ -236,11 +288,9 @@ export const GameProvider = ({ children }) => {
         ].filter(Boolean).length;
 
         if (newTime >= 19 || newTime <= 7) {
-          // La nuit, avoir des lumières augmente le confort
           if (lightsOn > 0) {
             newComfort += lightsOn * 0.3;
           } else if (newTime >= 19 && newTime <= 22) {
-            // Pas de lumières le soir = inconfortable
             newComfort -= 1;
           }
         }
@@ -249,13 +299,11 @@ export const GameProvider = ({ children }) => {
         const tvOn = appliancesState.tv;
         const consoleOn = appliancesState.console;
         if ((tvOn || consoleOn) && (newTime >= 18 && newTime <= 23)) {
-          // Divertissement le soir augmente le confort
           newComfort += 1;
         }
 
         // ORDINATEUR (travail/loisir)
         if (appliancesState.computer && newTime >= 8 && newTime <= 18) {
-          // Ordinateur en journée (travail) = neutre mais nécessaire
           newComfort += 0.5;
         }
 
@@ -277,7 +325,7 @@ export const GameProvider = ({ children }) => {
 
       return newTime;
     });
-  }, [getCurrentPowerConsumption, getPriceModifier, currentScenario, appliancesState]);
+  }, [getCurrentPowerConsumption, getPriceModifier, currentScenario, appliancesState, currentDay]);
 
   // Système de temps automatique
   useEffect(() => {
@@ -308,6 +356,19 @@ export const GameProvider = ({ children }) => {
       initialState[id] = APPLIANCES[id].alwaysOn || false;
     });
     setAppliancesState(initialState);
+
+    // Initialiser les missions du jour
+    const dayMissions = MISSIONS[`day${dayNumber}`] || [];
+    const initialMissions = {};
+    dayMissions.forEach(m => {
+      initialMissions[m.id] = { hoursCompleted: 0, completed: false };
+    });
+    setMissionProgress(initialMissions);
+
+    // Réinitialiser le solaire
+    setSolarProductionTotal(0);
+    setSolarConsumptionTotal(0);
+    setCurrentSolarProductionW(0);
 
     setCurrentMessage(null);
 
@@ -351,45 +412,38 @@ export const GameProvider = ({ children }) => {
     setShowTutorial(false);
     setTutorialCompleted(true);
     localStorage.setItem('maisonEnergivore_tutorialCompleted', 'true');
-    setIsPlaying(true); // Reprendre le jeu
+    setIsPlaying(true);
   }, []);
 
   const skipTutorial = useCallback(() => {
     setShowTutorial(false);
     setTutorialCompleted(true);
     localStorage.setItem('maisonEnergivore_tutorialCompleted', 'true');
-    setIsPlaying(true); // Reprendre le jeu
+    setIsPlaying(true);
   }, []);
 
   // Terminer le jour et afficher le récap
   const endDay = useCallback(() => {
-    console.log('🎬 endDay appelé - currentDay:', currentDay, 'gameTime:', gameTime);
+    console.log('endDay appele - currentDay:', currentDay, 'gameTime:', gameTime);
     setIsPlaying(false);
 
+    // Calculer le pourcentage d'énergie verte
+    const totalConsumptionWithSolar = todayConsumption + solarConsumptionTotal;
+    const greenEnergyPercent = totalConsumptionWithSolar > 0
+      ? (solarConsumptionTotal / totalConsumptionWithSolar) * 100
+      : 0;
+
     // Sauvegarder les résultats du jour
-    const dayResults = {
-      day: currentDay,
-      consumption: todayConsumption,
-      budget: todayBudget,
-      comfort: todayComfort,
-      peak: peakConsumption,
-      offPeak: offPeakConsumption,
-      hasNextDay: currentDay < 7 // Il y a 7 jours au total
-    };
+    const dayMissions = MISSIONS[`day${currentDay}`] || [];
+    const missionsData = dayMissions.map(m => ({
+      ...m,
+      progress: missionProgress[m.id] || { hoursCompleted: 0, completed: false }
+    }));
+    const missionsCompleted = dayMissions.length === 0 ||
+      dayMissions.every(m => missionProgress[m.id]?.completed);
 
-    console.log('📦 Résultats du jour:', dayResults);
-
-    setDayRecapData(dayResults);
-    setShowRecap(true);
-    setGameState('recap');
-
-    console.log('✅ État mis à jour: showRecap=true, gameState=recap');
-
-    // Ajouter au daysHistory
-    setDaysHistory(prev => [...prev, dayResults]);
-
-    // Débloquer le prochain jour si on a réussi au moins partiellement
-    const consumptionObjective = currentScenario?.objectives?.consumption || BELGIUM_AVERAGE;
+    // Calculer les objectifs et étoiles UNE SEULE FOIS (source de vérité)
+    const consumptionObjective = currentScenario?.objectives?.consumption || BELGIUM_AVERAGE.dailyConsumption;
     const budgetObjective = currentScenario?.objectives?.budget || 5;
     const comfortObjective = currentScenario?.objectives?.comfort || 60;
 
@@ -399,17 +453,60 @@ export const GameProvider = ({ children }) => {
 
     const successCount = [consumptionSuccess, budgetSuccess, comfortSuccess].filter(Boolean).length;
 
-    // Calculer les étoiles obtenues (0-3 selon le nombre d'objectifs atteints)
-    const allSuccess = successCount === 3;
-    const partialSuccess = successCount >= 2;
-    const currentStars = successCount; // 0, 1, 2, ou 3 étoiles
+    // Calculer les étoiles
+    let currentStars = successCount;
+
+    // Si des missions existent et ne sont pas toutes complétées, max 1 étoile
+    if (dayMissions.length > 0 && !missionsCompleted) {
+      currentStars = Math.min(currentStars, 1);
+    }
+
+    // Vérifier l'objectif d'énergie verte
+    const greenObjective = currentScenario?.objectives?.greenEnergyPercentage;
+    if (greenObjective && greenEnergyPercent < greenObjective) {
+      currentStars = Math.max(0, currentStars - 1);
+    }
+
+    const dayResults = {
+      day: currentDay,
+      consumption: todayConsumption,
+      budget: todayBudget,
+      comfort: todayComfort,
+      peak: peakConsumption,
+      offPeak: offPeakConsumption,
+      hasNextDay: currentDay < 7,
+      // Objectifs (pour affichage dans le recap)
+      consumptionObjective,
+      budgetObjective,
+      comfortObjective,
+      consumptionSuccess,
+      budgetSuccess,
+      comfortSuccess,
+      // Étoiles (source unique de vérité)
+      stars: currentStars,
+      // Missions
+      missions: missionsData,
+      allMissionsCompleted: missionsCompleted,
+      // Solaire
+      solarProduction: solarProductionTotal,
+      solarConsumption: solarConsumptionTotal,
+      greenEnergyPercentage: greenEnergyPercent
+    };
+
+    console.log('Resultats du jour:', dayResults);
+
+    setDayRecapData(dayResults);
+    setShowRecap(true);
+    setGameState('recap');
+
+    // Ajouter au daysHistory
+    setDaysHistory(prev => [...prev, dayResults]);
 
     // Sauvegarder le meilleur score (garder le maximum)
     setBestScores(prev => {
       const previousBest = prev[`day${currentDay}`] || 0;
       const newBest = Math.max(previousBest, currentStars);
 
-      // Ne mettre à jour que si c'est mieux ou égal
       if (newBest > previousBest) {
         const updated = { ...prev, [`day${currentDay}`]: newBest };
         localStorage.setItem('maisonEnergivore_bestScores', JSON.stringify(updated));
@@ -418,9 +515,9 @@ export const GameProvider = ({ children }) => {
       return prev;
     });
 
-    // Débloquer le prochain jour si au moins 2/3 objectifs réussis
-    // Exception : le jour 1 (tutoriel) débloque toujours le jour 2
-    if ((currentDay === 1 || successCount >= 2) && currentDay < 7) {
+    // Débloquer le prochain jour : 2/3 objectifs ET missions complétées (si existantes)
+    const canUnlock = currentDay === 1 || (successCount >= 2 && missionsCompleted);
+    if (canUnlock && currentDay < 7) {
       const nextDay = currentDay + 1;
       setUnlockedDays(prev => {
         const newUnlocked = [...new Set([...prev, nextDay])];
@@ -428,15 +525,14 @@ export const GameProvider = ({ children }) => {
         return newUnlocked;
       });
     }
-  }, [currentDay, todayConsumption, todayBudget, todayComfort, peakConsumption, offPeakConsumption, currentScenario, BELGIUM_AVERAGE]);
+  }, [currentDay, todayConsumption, todayBudget, todayComfort, peakConsumption, offPeakConsumption, currentScenario, missionProgress, solarProductionTotal, solarConsumptionTotal, gameTime]);
 
   // Détecter la fin de journée (24h)
   useEffect(() => {
     if (gameTime >= 24 && gameState === 'playing' && !endDayCalledRef.current) {
-      console.log('🎯 Fin de journée détectée - Affichage du récap');
-      endDayCalledRef.current = true; // Marquer comme appelé
+      console.log('Fin de journee detectee - Affichage du recap');
+      endDayCalledRef.current = true;
 
-      // Petit délai pour que l'UI se mette à jour
       const timer = setTimeout(() => {
         endDay();
       }, 500);
@@ -454,13 +550,11 @@ export const GameProvider = ({ children }) => {
 
   // Fonction pour retourner au menu
   const goToMenu = useCallback(() => {
-    // Si une partie est en cours (pas encore terminée), demander confirmation
     if (gameState === 'playing' && gameTime > 0 && gameTime < 24) {
       setShowConfirmQuit(true);
-      return; // Attendre la confirmation
+      return;
     }
 
-    // Retour au menu immédiat si pas en partie
     setShowRecap(false);
     setDayRecapData(null);
     setGameState('menu');
@@ -506,6 +600,16 @@ export const GameProvider = ({ children }) => {
     dayRecapData,
     showConfirmQuit,
     showObjectives,
+
+    // Missions
+    missionProgress,
+    currentMissions,
+    allMissionsCompleted,
+
+    // Solaire
+    solarProductionTotal,
+    solarConsumptionTotal,
+    currentSolarProductionW,
 
     // Fonctions
     toggleAppliance,

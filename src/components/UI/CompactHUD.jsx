@@ -30,16 +30,23 @@ const CompactHUD = ({ onShowSolution }) => {
     gameSpeed,
     setGameSpeed,
     advanceTime,
-    goToMenu
+    goToMenu,
+    currentSolarProductionW,
+    solarConsumptionTotal
   } = useGame();
 
   const consumptionLimit = getConsumptionLimit();
   const budgetLimit = currentScenario?.objectives?.budget;
   const comfortLimit = currentScenario?.objectives?.comfort;
   const currentPower = getCurrentPowerConsumption();
+  const solarEnabled = currentScenario?.solar?.enabled;
 
   const isOffPeak = isOffPeakHour(gameTime);
   const timeString = `${gameTime.toString().padStart(2, '0')}:00`;
+
+  // Calcul du pourcentage d'énergie verte
+  const totalWithSolar = todayConsumption + solarConsumptionTotal;
+  const greenPercent = totalWithSolar > 0 ? (solarConsumptionTotal / totalWithSolar) * 100 : 0;
 
   const getConsumptionColor = () => {
     if (!consumptionLimit) return 'text-cyan-400';
@@ -127,7 +134,7 @@ const CompactHUD = ({ onShowSolution }) => {
           </button>
         </div>
 
-        {/* Right: Power & Time */}
+        {/* Right: Power, Solar & Time */}
         <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
           {/* Puissance Active */}
           <div className="px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full bg-yellow-500/20 border border-yellow-500/50 flex items-center gap-0.5">
@@ -136,6 +143,22 @@ const CompactHUD = ({ onShowSolution }) => {
               {currentPower}W
             </span>
           </div>
+
+          {/* Solar badge */}
+          {solarEnabled && (
+            <div className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full flex items-center gap-0.5 ${
+              currentSolarProductionW > 0
+                ? 'bg-amber-500/20 border border-amber-500/50'
+                : 'bg-gray-700/50 border border-gray-600/50'
+            }`}>
+              <span className="text-[10px]">{currentSolarProductionW > 0 ? '☀️' : '🌙'}</span>
+              <span className={`text-[9px] sm:text-[10px] font-bold ${
+                currentSolarProductionW > 0 ? 'text-amber-400' : 'text-gray-500'
+              }`}>
+                {currentSolarProductionW}W
+              </span>
+            </div>
+          )}
 
           {/* Heure */}
           <div className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full ${isOffPeak ? 'bg-green-500/20 border border-green-500' : 'bg-cyan-500/20 border border-cyan-500/50'} flex items-center gap-0.5`}>
@@ -153,15 +176,15 @@ const CompactHUD = ({ onShowSolution }) => {
           <div className="flex items-center gap-1.5 sm:gap-2">
             <TrophyOutlined className="text-yellow-400 flex-shrink-0" style={{ fontSize: '14px' }} />
             <p className="text-[9px] sm:text-[10px] md:text-xs text-gray-300 leading-tight flex-1">
-              <span className="font-bold text-cyan-400">{currentScenario.title || 'Défi du jour'}</span>
+              <span className="font-bold text-cyan-400">{currentScenario.title || 'Defi du jour'}</span>
               <span className="hidden sm:inline"> : {currentScenario.description}</span>
             </p>
           </div>
         </div>
       )}
 
-      {/* Compact metrics */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3 px-2 sm:px-3 py-2 sm:py-3">
+      {/* Compact metrics - hidden on desktop (shown in MetricsSidebar instead) */}
+      <div className={`lg:hidden grid ${solarEnabled ? 'grid-cols-4' : 'grid-cols-3'} gap-2 sm:gap-3 px-2 sm:px-3 py-2 sm:py-3`}>
         {/* Energy - Circular */}
         <div className="bg-gray-800/50 rounded-lg sm:rounded-xl p-2 sm:p-3 border border-cyan-500/20 flex items-center justify-center">
           <CircularProgress
@@ -212,6 +235,25 @@ const CompactHUD = ({ onShowSolution }) => {
             format="percent"
           />
         </div>
+
+        {/* Solar - Circular (only if solar enabled) */}
+        {solarEnabled && (
+          <div className="bg-gray-800/50 rounded-lg sm:rounded-xl p-2 sm:p-3 border border-amber-500/20 flex items-center justify-center">
+            <CircularProgress
+              value={greenPercent}
+              maxValue={100}
+              label="Solaire"
+              icon={<span className="text-xs">☀️</span>}
+              color={
+                greenPercent >= 30 ? 'green' :
+                greenPercent >= 15 ? 'yellow' :
+                'orange'
+              }
+              size="normal"
+              format="percent"
+            />
+          </div>
+        )}
       </div>
     </div>
   );

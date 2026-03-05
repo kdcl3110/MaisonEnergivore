@@ -2,12 +2,17 @@ import React from 'react';
 import { useGame } from '../../context/GameContext';
 
 const Appliance = ({ applianceId }) => {
-  const { APPLIANCES, appliancesState, toggleAppliance, isPlaying } = useGame();
+  const { APPLIANCES, appliancesState, toggleAppliance, isPlaying, currentMissions, missionProgress } = useGame();
 
   const appliance = APPLIANCES[applianceId];
   const isOn = appliancesState[applianceId];
 
   if (!appliance) return null;
+
+  // Check if this appliance is needed for an active (incomplete) mission
+  const hasMissionBadge = currentMissions?.some(
+    m => m.appliances.includes(applianceId) && !missionProgress[m.id]?.completed
+  );
 
   const handleClick = () => {
     if (appliance.canToggle && isPlaying) {
@@ -86,6 +91,15 @@ const Appliance = ({ applianceId }) => {
             bg-gradient-to-r ${getPowerColor()} text-white
           `}>
             {getPowerLevel()}
+          </div>
+        </div>
+      )}
+
+      {/* Mission badge */}
+      {hasMissionBadge && (
+        <div className="absolute -top-1.5 sm:-top-2 -left-1.5 sm:-left-2 z-10">
+          <div className="w-5 h-5 sm:w-6 sm:h-6 bg-gradient-to-br from-amber-500 to-orange-600 rounded-full flex items-center justify-center text-[10px] sm:text-xs shadow-lg animate-pulse">
+            📋
           </div>
         </div>
       )}
